@@ -9,8 +9,8 @@ saves; the caller composes ``+ theme_numeraire() + scale_fill_numeraire(...)`` a
 to :func:`numeraire_viz.save_paper`.
 
 - :func:`plot_weights_heatmap` — a ``WeightsOutput`` / ``PanelWeightsOutput`` object → a
-  date x asset weight matrix as tiles, a diverging fill centred at zero (compose with
-  ``scale_fill_numeraire(diverging=True)``).
+  date x asset weight matrix as tiles over an ordinal (gap-free) date axis, with the zero-centred
+  diverging fill attached by default (``diverging=False`` hands the fill scale back to the caller).
 - :func:`plot_factor_loadings` — a caller-supplied tidy loadings frame → loading paths over a
   date/characteristic axis, or a loadings heatmap when no axis is given.
 - :func:`plot_frontier` — a caller-supplied risk-return frontier frame → the efficient-frontier
@@ -33,7 +33,11 @@ from plotnine import (
     geom_tile,
     ggplot,
     labs,
+    scale_x_discrete,
 )
+
+from numeraire_viz._common import date_breaks_and_labels, smart_date_scale, thinned_break_labels
+from numeraire_viz.theme import scale_fill_numeraire
 
 
 def _weights_long(weights_output: WeightsOutput | PanelWeightsOutput) -> pd.DataFrame:
@@ -57,20 +61,48 @@ def _weights_long(weights_output: WeightsOutput | PanelWeightsOutput) -> pd.Data
     return long[["date", "asset", "weight"]]
 
 
+def _ordinal_date_axis(long: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Recode ``date`` as an ordered factor; return the frame + the shown break ids and labels.
+
+    A weight heatmap's rebalance dates are irregularly spaced, so a *continuous* datetime x leaves
+    white gaps between tiles. Treating the sorted unique dates as an equally-spaced ordered factor
+    makes the tiles abut with no gaps. Each date is a category keyed by an unambiguous ISO id (so
+    monthly rebalances in the same year stay distinct positions); the axis is then labelled at a
+    thinned subset of those ids, each rendered with a compact span-appropriate format (``"%Y"`` for
+    a multi-year book, ``"%b %Y"`` for a shorter one) so the tick labels never overlap.
+    """
+    uniq = pd.to_datetime(pd.Series(sorted(pd.unique(long["date"]))))
+    _, fmt = date_breaks_and_labels(uniq)
+    ids = uniq.dt.strftime("%Y-%m-%d").tolist()  # unique, ordered category positions
+    id_to_date = dict(zip(ids, uniq, strict=True))
+    out = long.copy()
+    out["date"] = pd.Categorical(out["date"].dt.strftime("%Y-%m-%d"), categories=ids, ordered=True)
+    shown_ids = thinned_break_labels(ids)
+    shown_labels = [id_to_date[i].strftime(fmt) for i in shown_ids]
+    return out, shown_ids, shown_labels
+
+
 def plot_weights_heatmap(
     weights_output: WeightsOutput | PanelWeightsOutput,
     *,
     top: int | None = None,
     order: str = "mean",
+    diverging: bool = True,
 ) -> ggplot:
     """A date x asset portfolio-weight matrix as a heatmap, signed long/short about zero.
 
     Consumes a numeraire :class:`~numeraire.core.engine.WeightsOutput` (wide, fixed universe) or
     :class:`~numeraire.core.engine.PanelWeightsOutput` (long, entering/exiting universe) **object**
     directly — the weight stream is not in the tidy result schema, so this is a family-B plotter.
-    Each ``(date, asset)`` weight is a ``geom_tile`` whose fill is the signed weight; compose with
-    ``scale_fill_numeraire(diverging=True)`` so a long (positive) weight and a short (negative) one
-    read as opposite hues about an unsaturated zero.
+    Each ``(date, asset)`` weight is a ``geom_tile`` whose fill is the signed weight.
+
+    A weight matrix is inherently signed, so the zero-centred diverging fill
+    (``scale_fill_numeraire(diverging=True)``) is attached **by default** — a long (positive) weight
+    and a short (negative) one read as opposite hues about an unsaturated zero. Pass
+    ``diverging=False`` to leave the fill scale to the caller. The rebalance-date axis is drawn as
+    an equally-spaced ordered factor (not a continuous datetime), so tiles abut with no white gaps
+    even when rebalances are irregularly spaced; a thinned, span-appropriate subset of dates is
+    labelled.
 
     ``top`` keeps only the ``N`` assets with the largest average *absolute* weight (the names the
     book actually leans on), dropping the long tail. ``order`` sorts the asset axis: ``"mean"``
@@ -81,6 +113,8 @@ def plot_weights_heatmap(
     if order not in allowed:
         raise ValueError(f"order must be one of {allowed}; got {order!r}")
     long = _weights_long(weights_output)
+    if long.empty:
+        raise ValueError("weights output is empty; nothing to plot")
 
     per_asset = long.groupby("asset")["weight"]
     mean_w = per_asset.mean()
@@ -96,12 +130,17 @@ def plot_weights_heatmap(
     else:
         assets = sorted(mean_w.index, reverse=True)  # reversed so A reads at the top tile row
     long["asset"] = pd.Categorical(long["asset"], categories=assets, ordered=True)
+    long, shown_ids, shown_labels = _ordinal_date_axis(long)
 
-    return (
+    plot = (
         ggplot(long, aes(x="date", y="asset", fill="weight"))
         + geom_tile()
+        + scale_x_discrete(breaks=shown_ids, labels=shown_labels)
         + labs(x="", y="", fill="Weight")
     )
+    if diverging:
+        plot = plot + scale_fill_numeraire(diverging=True)
+    return plot
 
 
 def _loadings_frame(loadings: pd.DataFrame) -> pd.DataFrame:
@@ -115,6 +154,8 @@ def _loadings_frame(loadings: pd.DataFrame) -> pd.DataFrame:
             f"loadings frame is missing required column(s) {sorted(missing)}; expected a tidy "
             "frame with 'factor', 'loading' and an axis such as 'date' or 'entity'"
         )
+    if loadings.empty:
+        raise ValueError("loadings frame is empty; nothing to plot")
     out = loadings.copy()
     out["factor"] = out["factor"].astype(str)
     out["loading"] = out["loading"].astype(np.float64)
@@ -153,7 +194,7 @@ def plot_factor_loadings(loadings: pd.DataFrame, *, x: str | None = None) -> ggp
     if x not in data.columns:
         raise ValueError(f"loading axis {x!r} is not a column of the loadings frame")
     data = data.sort_values(x, kind="stable")
-    return (
+    plot = (
         ggplot(data, aes(x=x, y="loading", color="factor"))
         + geom_hline(yintercept=0, color="#666666", size=0.3)
         + geom_line()
@@ -161,6 +202,9 @@ def plot_factor_loadings(loadings: pd.DataFrame, *, x: str | None = None) -> ggp
         + facet_wrap("~factor", scales="free_y")
         + labs(x=x, y="Loading", color="Factor")
     )
+    if x == "date" or pd.api.types.is_datetime64_any_dtype(data[x]):
+        plot = plot + smart_date_scale(pd.to_datetime(data[x]))
+    return plot
 
 
 def _frontier_frame(frame: pd.DataFrame, what: str) -> pd.DataFrame:
@@ -170,6 +214,8 @@ def _frontier_frame(frame: pd.DataFrame, what: str) -> pd.DataFrame:
     missing = {"risk", "return"} - {str(c) for c in frame.columns}
     if missing:
         raise ValueError(f"{what} frame is missing required column(s) {sorted(missing)}")
+    if frame.empty:
+        raise ValueError(f"{what} frame is empty; nothing to plot")
     out = frame.copy()
     out["risk"] = out["risk"].astype(np.float64)
     out["return"] = out["return"].astype(np.float64)

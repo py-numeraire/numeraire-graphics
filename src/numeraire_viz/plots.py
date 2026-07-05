@@ -40,7 +40,12 @@ from plotnine import (
     scale_y_continuous,
 )
 
-from numeraire_viz._common import series_rows, summary_rows
+from numeraire_viz._common import (
+    series_rows,
+    smart_date_scale,
+    summary_rows,
+    warn_palette_overflow,
+)
 
 
 def _percent_labels() -> Any:
@@ -105,6 +110,12 @@ def plot_cumulative(
     panels: list[pd.DataFrame] = []
     bench_name: str | None = None
     if isinstance(benchmark, str):
+        present = list(pd.unique(series["method"]))
+        if benchmark not in present:
+            raise ValueError(
+                f"benchmark={benchmark!r} is not a method in the result table; present methods are "
+                f"{present}. Pass one of those names, or a date-indexed pd.Series of returns."
+            )
         bench_name = benchmark
     for method, grp in series.groupby("method", sort=False):
         ret = pd.Series(grp["value"].to_numpy(dtype=np.float64), index=grp["date"])
@@ -120,6 +131,7 @@ def plot_cumulative(
         panels.append(wd)
 
     wide = pd.concat(panels, ignore_index=True)
+    warn_palette_overflow(wide["method"].nunique())
     long = wide.melt(
         id_vars=["date", "method", "role"],
         value_vars=["Cumulative return", "Drawdown"],
@@ -144,6 +156,7 @@ def plot_cumulative(
         + geom_hline(yintercept=0, color="#666666", size=0.3)
         + geom_line(aes(color="method", linetype="role"))
         + facet_wrap("~panel", ncol=1, scales="free_y")
+        + smart_date_scale(long["date"])
         + scale_y_continuous(labels=_percent_labels())
         + labs(x="", y="", color="Method", linetype="Role")
     )
@@ -184,6 +197,7 @@ def plot_rolling(
         out["method"] = str(method)
         frames.append(out.dropna(subset=["value"]))
     data = pd.concat(frames, ignore_index=True)
+    warn_palette_overflow(data["method"].nunique())
 
     ylab = {"sharpe": f"Rolling Sharpe ({window})", "mean": "Rolling mean", "vol": "Rolling vol"}[
         metric
@@ -192,6 +206,7 @@ def plot_rolling(
         ggplot(data, aes(x="date", y="value", color="method"))
         + geom_hline(yintercept=0, color="#666666", size=0.3)
         + geom_line()
+        + smart_date_scale(data["date"])
         + labs(x="", y=ylab, color="Method")
     )
     if metric != "sharpe":
@@ -242,15 +257,18 @@ def plot_metric_by(
         raise ValueError(f"grouping column {x!r} is not in the result table")
     data = _derive_ci(sub, x)
     has_ci = bool(data["hi"].notna().any())
+    warn_palette_overflow(len(data))
 
     plot = (
         ggplot(data, aes(x=x, y="value", fill=x))
         + geom_hline(yintercept=0, color="#666666", size=0.3)
-        + geom_col()
+        # ``fill`` encodes the same column as ``x``, so a fill legend would just restate the axis
+        # tick labels — suppress it (the coloured bars remain, keyed by the x-axis).
+        + geom_col(show_legend=False)
     )
     if has_ci:
         plot = plot + geom_errorbar(aes(ymin="lo", ymax="hi"), width=0.25)
-    return plot + labs(x=x, y=metric, fill=x)
+    return plot + labs(x=x, y=metric)
 
 
 def plot_complexity_curve(
@@ -274,6 +292,7 @@ def plot_complexity_curve(
             f"complexity axis {x!r} is not in the result table; join it on before plotting"
         )
     data = sub.sort_values(x, kind="stable")
+    warn_palette_overflow(data["method"].nunique())
 
     plot = ggplot(data, aes(x=x, y="value", color="method")) + geom_hline(
         yintercept=0, color="#666666", size=0.3
@@ -316,6 +335,7 @@ def plot_ic_decay(
             "running forecasts at several horizons and tagging each 'ic' row, then joining it on"
         )
     data = sub.sort_values(horizon, kind="stable")
+    warn_palette_overflow(data["method"].nunique())
 
     plot = ggplot(data, aes(x=horizon, y="value", color="method")) + geom_hline(
         yintercept=0, color="#666666", size=0.3

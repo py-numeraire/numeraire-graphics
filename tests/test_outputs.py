@@ -258,5 +258,8 @@ def test_scale_fill_numeraire_rejects_unknown_palette():
 
 
 def test_weights_heatmap_composes_with_diverging_fill(weights_output, tmp_path):
-    plot = plot_weights_heatmap(weights_output) + scale_fill_numeraire(diverging=True)
+    # diverging=False leaves the fill scale to the caller; composing one still renders.
+    plot = plot_weights_heatmap(weights_output, diverging=False) + scale_fill_numeraire(
+        diverging=True
+    )
     _smoke_render(plot, tmp_path, "weights_heatmap_diverging")

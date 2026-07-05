@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "numeraire-viz"
-version = "0.1.0"
+version = "0.2.0"
 description = "Grammar-of-graphics figures over the numeraire tidy result schema (plotnine primary)."
 readme = "README.md"
 requires-python = ">=3.11"
