@@ -15,11 +15,19 @@ from plotnine import (
     element_rect,
     element_text,
     scale_color_manual,
+    scale_fill_gradient2,
+    scale_fill_manual,
     theme,
     theme_matplotlib,
 )
 
 from numeraire_viz._common import OKABE_ITO
+
+# Colourblind-safe diverging endpoints (Okabe-Ito blue / near-white / vermillion), for a signed
+# fill centred at zero: blue = negative (short), vermillion = positive (long).
+_DIVERGING_LOW = "#0072B2"
+_DIVERGING_MID = "#F7F7F7"
+_DIVERGING_HIGH = "#D55E00"
 
 # cm-per-inch, for the paper-exact save path.
 _CM_PER_INCH = 2.54
@@ -74,6 +82,38 @@ def scale_color_numeraire(
         greys = ["#000000", "#555555", "#888888", "#AAAAAA", "#333333", "#777777", "#999999"]
         return scale_color_manual(values=greys, name="")
     return scale_color_manual(values=list(OKABE_ITO), name="")
+
+
+def scale_fill_numeraire(
+    palette: str = "okabe_ito", greyscale: bool = False, diverging: bool = False
+) -> Any:
+    """The ``fill`` counterpart of :func:`scale_color_numeraire`, discrete or diverging.
+
+    With ``diverging=False`` (the default) this is the discrete Okabe-Ito fill scale for a
+    categorical ``fill`` aesthetic — the bars of :func:`~numeraire_viz.plot_metric_by` and any other
+    grouped fill. ``greyscale=True`` collapses it to ordered greys for a monochrome print, matching
+    :func:`scale_color_numeraire`.
+
+    With ``diverging=True`` it is a *continuous* two-sided fill centred at zero — the scale the
+    weight heatmap wants, so a long (positive) and a short (negative) weight read as opposite hues
+    with an unsaturated midpoint at zero. The endpoints are colourblind-safe (blue for negative,
+    vermillion for positive); ``greyscale=True`` gives a light-to-dark grey ramp through white.
+    ``palette`` currently accepts only ``"okabe_ito"``.
+    """
+    if palette != "okabe_ito":
+        raise ValueError(f"unknown palette {palette!r}; only 'okabe_ito' is available")
+    if diverging:
+        if greyscale:
+            return scale_fill_gradient2(
+                low="#333333", mid="#FFFFFF", high="#000000", midpoint=0.0, name=""
+            )
+        return scale_fill_gradient2(
+            low=_DIVERGING_LOW, mid=_DIVERGING_MID, high=_DIVERGING_HIGH, midpoint=0.0, name=""
+        )
+    if greyscale:
+        greys = ["#000000", "#555555", "#888888", "#AAAAAA", "#333333", "#777777", "#999999"]
+        return scale_fill_manual(values=greys, name="")
+    return scale_fill_manual(values=list(OKABE_ITO), name="")
 
 
 def save_paper(

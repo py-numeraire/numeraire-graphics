@@ -1,12 +1,29 @@
 # numeraire-viz
 
-Grammar-of-graphics figures over the [**numeraire**](https://github.com/py-numeraire/numeraire)
-tidy result schema.
+Grammar-of-graphics figures over [**numeraire**](https://github.com/py-numeraire/numeraire)'s
+results and Output objects.
 
 **plotnine is primary.** Every plot function *returns* a `ggplot` grammar object — it never draws,
 shows, or saves. You compose the returned object freely (`+ theme_numeraire()` and friends) and,
 when you are ready, hand it to the one explicit save surface, `save_paper`, for centimetre-exact
 figures. Core `numeraire` stays visualization-free; this is a separate, optional package.
+
+## Two input families
+
+The plots divide by **what they consume**:
+
+- **Family A — result-schema plotters** (`numeraire_viz.plots`) read the tidy result table every
+  evaluator emits (the columns below). They are the default surface: comparison figures assembled
+  straight from a run's results.
+- **Family B — Output/frame plotters** (`numeraire_viz.outputs`) need richer inputs the tidy schema
+  deliberately does not carry — a per-date × asset weight stream, a factor-loadings panel, a
+  risk-return frontier trace. They take a numeraire **Output object** (e.g. a `WeightsOutput`) or a
+  caller-supplied **frame** directly. The contract is otherwise identical (return a `ggplot`, never
+  draw or save); only the input differs.
+
+The split is principled, not ad hoc: the tidy result schema has one row per `(method, date, metric)`
+with a single scalar `value` and no asset/factor/frontier axis, so a figure that needs that axis
+cannot be schema-fed and is a family-B plotter by construction.
 
 ## Install
 
@@ -26,7 +43,7 @@ Two idioms drive the figures: **per-date** rows (one row per date per method —
 `StrategyReturnEvaluator` emits `metric="strategy_return"`) feed the time-series plots, and
 **summary** rows (one scalar row per method — e.g. `metric="sharpe"`) feed the bar/curve plots.
 
-## Plots (first slice)
+## Family A — result-schema plotters (`numeraire_viz.plots`)
 
 | function | reads | draws |
 |----------|-------|-------|
@@ -34,16 +51,38 @@ Two idioms drive the figures: **per-date** rows (one row per date per method —
 | `plot_rolling(results, *, window, metric="sharpe")` | the same per-date returns | trailing-`window` rolling Sharpe / mean / vol, one line per method |
 | `plot_metric_by(results, *, metric, x="method")` | a scalar summary `metric` | bars across a grouping column, with CI whiskers when a confidence interval is derivable |
 | `plot_complexity_curve(results, *, x, metric, ribbon=None)` | a scalar `metric` + a caller-joined numeric `x` | metric-vs-complexity curve with an optional ribbon band |
+| `plot_ic_decay(results, *, horizon="horizon", metric="ic", smooth=False)` | the `ic` rows (`ICEvaluator`) + a caller-joined numeric `horizon` | information-coefficient decay curve by method, over a zero line, optional linear smooth |
 
-`x` in `plot_complexity_curve` (a shrinkage intensity, parameter count, ...) is **not** part of the
-result schema — you join it onto the frame yourself and name the column; the function will not
-invent it.
+`x` in `plot_complexity_curve` (a shrinkage intensity, parameter count, ...) and `horizon` in
+`plot_ic_decay` are **not** part of the result schema — you join the column onto the frame yourself
+and name it; the function will not invent it. For the IC decay curve you assemble the axis by running
+forecasts at several horizons, running `ICEvaluator` on each `ForecastOutput`, and tagging every
+resulting `ic` row with its numeric horizon before stacking the frames.
+
+## Family B — Output/frame plotters (`numeraire_viz.outputs`)
+
+| function | consumes | draws |
+|----------|----------|-------|
+| `plot_weights_heatmap(weights_output, *, top=None, order="mean")` | a `WeightsOutput` / `PanelWeightsOutput` **object** | a date × asset weight matrix as `geom_tile`, signed long/short (compose with `scale_fill_numeraire(diverging=True)`); `top` keeps the N largest-average-\|weight\| names, `order` sorts the asset axis |
+| `plot_factor_loadings(loadings, *, x=None)` | a caller-supplied tidy loadings frame (`factor`, `loading`, an axis like `date`/`entity`) | loading paths over `x` faceted/coloured by factor, or a loadings heatmap when `x` is absent |
+| `plot_frontier(frontier, *, points=None)` | a caller-supplied `risk`/`return` frame | the efficient-frontier curve, optionally overlaying named portfolios (`points` with `risk`/`return`/`label`) as labelled markers |
+
+There is **no** standard core surface for a loadings panel (it is method-local — an IPCA Γ, a
+rolling-beta panel) or a frontier trace, so those two take frames directly. The weights heatmap does
+consume a first-class core object (`WeightsOutput` / `PanelWeightsOutput` from
+`numeraire.core.engine`). `mean_variance_frontier(mean, cov, *, n=50)` is a small numpy-only
+convenience (not core, not an optimizer) that traces a `risk`/`return` frame from a mean vector and
+covariance for callers who lack a frontier of their own.
 
 ## Helpers
 
 - `theme_numeraire(base_size=8, base_family="serif")` — the house theme (publication-oriented).
 - `scale_color_numeraire(palette="okabe_ito", greyscale=False)` — a colourblind-safe discrete
   colour scale (Okabe-Ito by default; `greyscale=True` for monochrome print, paired with linetypes).
+- `scale_fill_numeraire(palette="okabe_ito", greyscale=False, diverging=False)` — the `fill`
+  counterpart: a discrete Okabe-Ito fill for grouped bars (`plot_metric_by`), or, with
+  `diverging=True`, a continuous zero-centred fill for the signed weights heatmap (blue = short,
+  vermillion = long).
 - `save_paper(plot, path, *, width_cm, height_cm, font_profile="latex")` — the sole save surface;
   sizes the figure exactly in centimetres under a print font profile.
 
@@ -60,12 +99,13 @@ Okabe-Ito palette by default, greyscale-safe linetypes, zero-reference lines, pe
 where the quantity is a return. Figure captions belong in the LaTeX document, not baked into the
 figure.
 
-## Roadmap (not in this slice)
+## Roadmap
 
-- **More plots**: weights heatmap, factor-loading paths, efficient frontier, IC-decay fan — each
-  needs inputs beyond the result schema (a weight stream, a loadings panel, a frontier trace, an
-  IC-by-horizon table), so they wait on the corresponding numeraire surfaces.
 - **`[altair]` extra**: a narwhals-native exploration surface (tooltips, selection, HTML sharing).
 - **`[tables]` extra**: publication tables (great_tables) companion to the figures.
+- **First-class loadings**: `plot_factor_loadings` and `plot_frontier` are frame-fed because
+  numeraire has no standard loadings/frontier surface today; if a core loadings accessor lands
+  (e.g. a Γ panel accessor), the loadings plot can consume the object directly like the weights
+  heatmap does.
 
 License: BSD-3-Clause.

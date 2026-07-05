@@ -11,6 +11,11 @@ Schema mapping in one line each:
 - :func:`plot_rolling` — the same per-date returns → a rolling statistic (default Sharpe).
 - :func:`plot_metric_by` — a scalar summary metric → bars (with CI whiskers when derivable).
 - :func:`plot_complexity_curve` — a scalar metric against a caller-supplied numeric axis → a curve.
+- :func:`plot_ic_decay` — the ``ic`` rows against a caller-supplied numeric ``horizon`` → a curve.
+
+These are the **result-schema plotters** (input family A). The richer object/frame plotters that
+need inputs the tidy schema does not carry — a weight stream, a loadings panel, a frontier trace —
+live in :mod:`numeraire_viz.outputs` (input family B).
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ from plotnine import (
     geom_point,
     geom_rect,
     geom_ribbon,
+    geom_smooth,
     ggplot,
     labs,
     scale_y_continuous,
@@ -279,4 +285,42 @@ def plot_complexity_curve(
                 raise ValueError(f"ribbon column {col!r} is not in the result table")
         plot = plot + geom_ribbon(aes(ymin=low, ymax=high, fill="method"), alpha=0.20, color=None)
     plot = plot + geom_line() + geom_point() + labs(x=x, y=metric, color="Method")
+    return plot
+
+
+def plot_ic_decay(
+    results: pd.DataFrame,
+    *,
+    horizon: str = "horizon",
+    metric: str = "ic",
+    smooth: bool = False,
+) -> ggplot:
+    """The information coefficient plotted against a caller-assembled forecast-horizon axis.
+
+    Consumes the ``ic`` rows :class:`ICEvaluator` emits (``metric="ic"`` by default; ``"ic_ir"``
+    or ``"ic_t"`` read the same way). A single :class:`ForecastOutput` carries one horizon, so its
+    ``ic`` row is scalar; the *decay curve* is assembled by the caller running forecasts at several
+    horizons and tagging each ``ic`` row with a numeric ``horizon`` column, then stacking them. The
+    result schema has no horizon column — exactly the caller-supplied-axis pattern of
+    :func:`plot_complexity_curve` — so ``horizon`` is an explicit argument and its absence raises.
+
+    Rows are sorted along ``horizon`` and drawn as a ``geom_line`` + ``geom_point`` coloured by
+    method, over a zero reference line (an IC decaying toward zero as the horizon lengthens is the
+    figure's whole point). ``smooth=True`` overlays a light linear trend (``geom_smooth``) per
+    method for the eye.
+    """
+    sub = summary_rows(results, metric)
+    if horizon not in sub.columns:
+        raise ValueError(
+            f"horizon axis {horizon!r} is not in the result table; the caller assembles it by "
+            "running forecasts at several horizons and tagging each 'ic' row, then joining it on"
+        )
+    data = sub.sort_values(horizon, kind="stable")
+
+    plot = ggplot(data, aes(x=horizon, y="value", color="method")) + geom_hline(
+        yintercept=0, color="#666666", size=0.3
+    )
+    if smooth:
+        plot = plot + geom_smooth(method="lm", se=False, linetype="dashed")
+    plot = plot + geom_line() + geom_point() + labs(x=horizon, y=metric, color="Method")
     return plot

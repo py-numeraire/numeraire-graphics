@@ -17,6 +17,7 @@ from plotnine import ggplot
 from numeraire_viz import (
     plot_complexity_curve,
     plot_cumulative,
+    plot_ic_decay,
     plot_metric_by,
     plot_rolling,
 )
@@ -176,3 +177,39 @@ def test_complexity_curve_rejects_missing_ribbon_column(complexity_results):
         plot_complexity_curve(
             complexity_results, x="complexity", metric="sharpe", ribbon=("lo", "missing")
         )
+
+
+# --- plot_ic_decay (family A) ----------------------------------------------------------------
+
+
+def test_ic_decay_line_and_points_by_method(ic_decay_results, tmp_path):
+    plot = plot_ic_decay(ic_decay_results)
+    assert isinstance(plot, ggplot)
+    geoms = _geoms(plot)
+    assert "geom_line" in geoms and "geom_point" in geoms
+    assert "geom_hline" in geoms  # zero reference
+    assert plot.mapping["x"] == "horizon"
+    assert plot.mapping["color"] == "method"
+    # sorted along the horizon axis
+    assert list(plot.data["horizon"]) == sorted(plot.data["horizon"])
+    assert set(plot.data["method"]) == {"voc", "hist_mean"}
+    _smoke_render(plot, tmp_path, "ic_decay")
+
+
+def test_ic_decay_smooth_adds_layer(ic_decay_results, tmp_path):
+    plot = plot_ic_decay(ic_decay_results, smooth=True)
+    assert "geom_smooth" in _geoms(plot)
+    _smoke_render(plot, tmp_path, "ic_decay_smooth")
+
+
+def test_ic_decay_custom_metric_ic_ir(ic_decay_results):
+    df = ic_decay_results.copy()
+    df["metric"] = "ic_ir"
+    plot = plot_ic_decay(df, metric="ic_ir")
+    assert (plot.data["metric"] == "ic_ir").all()
+
+
+def test_ic_decay_rejects_missing_horizon(ic_decay_results):
+    df = ic_decay_results.drop(columns=["horizon"])
+    with pytest.raises(ValueError, match="horizon axis"):
+        plot_ic_decay(df)
