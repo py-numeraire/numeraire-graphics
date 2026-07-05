@@ -261,3 +261,17 @@ def test_theme_x_axis_rotation_hook():
     props = axis_text_x.properties
     assert props.get("rotation") == 45
     assert props.get("ha") == "right"
+
+
+def test_theme_grid_defaults_off_and_opts_in() -> None:
+    from plotnine.themes.elements import element_blank, element_line
+
+    from numeraire_viz import theme_numeraire
+
+    off = theme_numeraire().themeables
+    assert isinstance(off["panel_grid_major_y"].theme_element, element_blank)
+    assert isinstance(off["panel_grid_major_x"].theme_element, element_blank)
+
+    y = theme_numeraire(grid="y").themeables
+    assert isinstance(y["panel_grid_major_y"].theme_element, element_line)
+    assert isinstance(y["panel_grid_major_x"].theme_element, element_blank)

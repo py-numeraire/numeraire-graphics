@@ -68,7 +68,10 @@ _FONT_PROFILES: dict[str, dict[str, Any]] = {
 
 
 def theme_numeraire(
-    base_size: float = 8.0, base_family: str = "serif", x_axis_rotation: float = 0.0
+    base_size: float = 8.0,
+    base_family: str = "serif",
+    x_axis_rotation: float = 0.0,
+    grid: str = "none",
 ) -> theme:
     """The house theme: a clean, publication-oriented look on a matplotlib base.
 
@@ -78,15 +81,23 @@ def theme_numeraire(
     fallback when a categorical or dense axis still crowds. Returns a plotnine ``theme`` to add onto
     any plot.
 
+    ``grid`` selects which panel gridlines are drawn: ``"none"`` (default — a clean, grid-free
+    panel, which also keeps the weight heatmap's tiled surface free of any row/column rules),
+    ``"y"`` (horizontal value guides for a line/bar reader), ``"x"``, or ``"both"``. The vertical
+    (x) grid is never drawn over a date/tile axis unless you explicitly ask for it.
+
     Beyond the typography this pins the publication defaults plotnine otherwise leaves to its
     matplotlib base: a flat light facet strip (no heavy grey block), a bottom legend with no key
     background, sized axis text, breathing room between facet panels, and a small plot margin — so a
     figure looks intentional straight out of the builder without hand-tuning.
-
-    Only the *horizontal* (y) grid is drawn — the value guides a line/bar reader wants; the
-    vertical (x) grid is dropped. That keeps the look minimal and, crucially, means the weight
-    heatmap's tiled date axis is not crossed by vertical rules that would read as white stripes.
     """
+    if grid not in ("none", "y", "x", "both"):
+        raise ValueError(f"grid must be one of 'none'/'y'/'x'/'both'; got {grid!r}")
+    show_y, show_x = grid in ("y", "both"), grid in ("x", "both")
+    y_major = element_line(color="#E6E6E6", size=0.3) if show_y else element_blank()
+    y_minor = element_line(color="#F2F2F2", size=0.2) if show_y else element_blank()
+    x_major = element_line(color="#E6E6E6", size=0.3) if show_x else element_blank()
+
     x_text_ha = "right" if x_axis_rotation else "center"
     return theme_matplotlib() + theme(
         text=element_text(family=base_family, size=base_size),
@@ -96,9 +107,9 @@ def theme_numeraire(
         legend_title=element_text(size=base_size),
         legend_text=element_text(size=base_size - 1),
         plot_title=element_text(size=base_size + 1),
-        panel_grid_major_y=element_line(color="#E6E6E6", size=0.3),
-        panel_grid_minor_y=element_line(color="#F2F2F2", size=0.2),
-        panel_grid_major_x=element_blank(),
+        panel_grid_major_y=y_major,
+        panel_grid_minor_y=y_minor,
+        panel_grid_major_x=x_major,
         panel_grid_minor_x=element_blank(),
         panel_background=element_rect(fill="white"),
         panel_spacing=0.03,
