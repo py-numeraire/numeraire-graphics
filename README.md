@@ -1,4 +1,4 @@
-# numeraire-viz
+# numeraire-graphics
 
 Grammar-of-graphics figures over [**numeraire**](https://github.com/py-numeraire/numeraire)'s
 results and Output objects.
@@ -12,10 +12,10 @@ figures. Core `numeraire` stays visualization-free; this is a separate, optional
 
 The plots divide by **what they consume**:
 
-- **Family A — result-schema plotters** (`numeraire_viz.plots`) read the tidy result table every
+- **Family A — result-schema plotters** (`numeraire_graphics.plots`) read the tidy result table every
   evaluator emits (the columns below). They are the default surface: comparison figures assembled
   straight from a run's results.
-- **Family B — Output/frame plotters** (`numeraire_viz.outputs`) need richer inputs the tidy schema
+- **Family B — Output/frame plotters** (`numeraire_graphics.outputs`) need richer inputs the tidy schema
   deliberately does not carry — a per-date × asset weight stream, a factor-loadings panel, a
   risk-return frontier trace. They take a numeraire **Output object** (e.g. a `WeightsOutput`) or a
   caller-supplied **frame** directly. The contract is otherwise identical (return a `ggplot`, never
@@ -28,7 +28,7 @@ cannot be schema-fed and is a family-B plotter by construction.
 ## Install
 
 ```bash
-pip install numeraire-viz          # pulls in numeraire, plotnine, matplotlib, mizani
+pip install numeraire-graphics          # pulls in numeraire, plotnine, matplotlib, mizani
 ```
 
 ## The result schema
@@ -43,7 +43,7 @@ Two idioms drive the figures: **per-date** rows (one row per date per method —
 `StrategyReturnEvaluator` emits `metric="strategy_return"`) feed the time-series plots, and
 **summary** rows (one scalar row per method — e.g. `metric="sharpe"`) feed the bar/curve plots.
 
-## Family A — result-schema plotters (`numeraire_viz.plots`)
+## Family A — result-schema plotters (`numeraire_graphics.plots`)
 
 | function | reads | draws |
 |----------|-------|-------|
@@ -59,7 +59,7 @@ and name it; the function will not invent it. For the IC decay curve you assembl
 forecasts at several horizons, running `ICEvaluator` on each `ForecastOutput`, and tagging every
 resulting `ic` row with its numeric horizon before stacking the frames.
 
-## Family B — Output/frame plotters (`numeraire_viz.outputs`)
+## Family B — Output/frame plotters (`numeraire_graphics.outputs`)
 
 | function | consumes | draws |
 |----------|----------|-------|
@@ -87,7 +87,7 @@ covariance for callers who lack a frontier of their own.
   sizes the figure exactly in centimetres under a print font profile.
 
 ```python
-from numeraire_viz import plot_cumulative, theme_numeraire, scale_color_numeraire, save_paper
+from numeraire_graphics import plot_cumulative, theme_numeraire, scale_color_numeraire, save_paper
 
 fig = plot_cumulative(results) + theme_numeraire() + scale_color_numeraire()
 save_paper(fig, "cumulative.pdf", width_cm=8, height_cm=6)

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "numeraire-viz"
-version = "0.2.0"
+name = "numeraire-graphics"
+dynamic = ["version"]
 description = "Grammar-of-graphics figures over the numeraire tidy result schema (plotnine primary)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,11 +12,15 @@ license = "BSD-3-Clause"
 authors = [{ name = "Yuheng Wu", email = "wuyuheng20074@live.com" }]
 keywords = ["asset-pricing", "backtesting", "plotnine", "grammar-of-graphics", "numeraire"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Visualization",
+  "Typing :: Typed",
 ]
 dependencies = [
   "numeraire>=0.2,<0.3",
@@ -39,15 +43,19 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/py-numeraire/numeraire-viz"
-Repository = "https://github.com/py-numeraire/numeraire-viz"
+Homepage = "https://github.com/py-numeraire/numeraire-graphics"
+Repository = "https://github.com/py-numeraire/numeraire-graphics"
+Issues = "https://github.com/py-numeraire/numeraire-graphics/issues"
 
 # Local development resolves numeraire from the sibling checkout until it is on PyPI.
 [tool.uv.sources]
 numeraire = { path = "../numeraire", editable = true }
 
+[tool.hatch.version]
+source = "vcs"
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/numeraire_viz"]
+packages = ["src/numeraire_graphics"]
 
 [tool.ruff]
 line-length = 100
@@ -58,14 +66,14 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
-include = ["src/numeraire_viz"]
+include = ["src/numeraire_graphics"]
 # plotnine / mizani ship no type stubs; treat their untyped surface as dynamic rather than
 # erroring on every call. Scoped to the plotting libraries — numeraire and pandas stay checked.
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=numeraire_viz --cov-report=term-missing"
+addopts = "--cov=numeraire_graphics --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["src/numeraire_viz"]
+source = ["src/numeraire_graphics"]

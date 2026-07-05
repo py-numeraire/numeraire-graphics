@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 from plotnine import ggplot
 
-from numeraire_viz import (
+from numeraire_graphics import (
     plot_complexity_curve,
     plot_cumulative,
     plot_ic_decay,

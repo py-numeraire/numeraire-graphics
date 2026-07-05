@@ -22,7 +22,7 @@ from plotnine import (
     theme_matplotlib,
 )
 
-from numeraire_viz._common import OKABE_ITO
+from numeraire_graphics._common import OKABE_ITO
 
 # Colourblind-safe diverging endpoints (Okabe-Ito blue / near-white / vermillion), for a signed
 # fill centred at zero: blue = negative (short), vermillion = positive (long).
@@ -145,9 +145,9 @@ def scale_fill_numeraire(
     """The ``fill`` counterpart of :func:`scale_color_numeraire`, discrete or diverging.
 
     With ``diverging=False`` (the default) this is the discrete Okabe-Ito fill scale for a
-    categorical ``fill`` aesthetic — the bars of :func:`~numeraire_viz.plot_metric_by` and any other
-    grouped fill. ``greyscale=True`` collapses it to ordered greys for a monochrome print, matching
-    :func:`scale_color_numeraire`.
+    categorical ``fill`` aesthetic — the bars of :func:`~numeraire_graphics.plot_metric_by` and any
+    other grouped fill. ``greyscale=True`` collapses it to ordered greys for a monochrome print,
+    matching :func:`scale_color_numeraire`.
 
     With ``diverging=True`` it is a *continuous* two-sided fill centred at zero — the scale the
     weight heatmap wants, so a long (positive) and a short (negative) weight read as opposite hues

@@ -11,10 +11,11 @@ jobs:
     steps:
       # numeraire is on PyPI, but the local uv source pins the sibling checkout; provide it so the
       # editable path resolves in CI exactly as it does locally.
-      - name: Check out numeraire-viz
+      - name: Check out numeraire-graphics
         uses: actions/checkout@v4
         with:
-          path: numeraire-viz
+          path: numeraire-graphics
+          fetch-depth: 0   # full history so hatch-vcs derives the version
       - name: Check out numeraire (dependency)
         uses: actions/checkout@v4
         with:
@@ -24,10 +25,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
       - name: Sync + lint + type-check + test
-        working-directory: numeraire-viz
+        working-directory: numeraire-graphics
         run: |
           uv sync --extra dev
           uv run ruff check .
           uv run ruff format --check .
-          uv run basedpyright src/numeraire_viz
+          uv run basedpyright src/numeraire_graphics
           uv run pytest

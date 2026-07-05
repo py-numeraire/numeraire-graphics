@@ -19,7 +19,7 @@ from plotnine import ggplot
 from plotnine.scales.scale_color import scale_fill_gradient2
 from plotnine.scales.scale_manual import scale_fill_manual
 
-from numeraire_viz import (
+from numeraire_graphics import (
     mean_variance_frontier,
     plot_factor_loadings,
     plot_frontier,
@@ -229,7 +229,7 @@ def test_mean_variance_frontier_rejects_degenerate():
 
 
 def test_scale_fill_numeraire_discrete_okabe_ito():
-    from numeraire_viz._common import OKABE_ITO
+    from numeraire_graphics._common import OKABE_ITO
 
     scale = scale_fill_numeraire()
     assert isinstance(scale, scale_fill_manual)

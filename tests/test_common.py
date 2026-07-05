@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from numeraire_viz._common import require_columns, series_rows, summary_rows
+from numeraire_graphics._common import require_columns, series_rows, summary_rows
 
 
 def test_require_columns_rejects_non_schema_frame():

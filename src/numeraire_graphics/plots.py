@@ -3,7 +3,7 @@
 Four builders, one contract: each takes a tidy result DataFrame as the first positional argument,
 keyword-only options after, and **returns a plotnine grammar object** (never draws or saves). The
 caller composes freely (``plot + theme_numeraire() + scale_color_numeraire()``) and, when ready,
-hands the object to :func:`numeraire_viz.save_paper`.
+hands the object to :func:`numeraire_graphics.save_paper`.
 
 Schema mapping in one line each:
 
@@ -15,7 +15,7 @@ Schema mapping in one line each:
 
 These are the **result-schema plotters** (input family A). The richer object/frame plotters that
 need inputs the tidy schema does not carry — a weight stream, a loadings panel, a frontier trace —
-live in :mod:`numeraire_viz.outputs` (input family B).
+live in :mod:`numeraire_graphics.outputs` (input family B).
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from plotnine import (
     scale_y_continuous,
 )
 
-from numeraire_viz._common import (
+from numeraire_graphics._common import (
     series_rows,
     smart_date_scale,
     summary_rows,

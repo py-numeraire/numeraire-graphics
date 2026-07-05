@@ -10,8 +10,8 @@ import pytest
 from plotnine import aes, geom_line, ggplot, theme
 from plotnine.scales.scale_manual import scale_color_manual
 
-from numeraire_viz import save_paper, scale_color_numeraire, theme_numeraire
-from numeraire_viz._common import OKABE_ITO
+from numeraire_graphics import save_paper, scale_color_numeraire, theme_numeraire
+from numeraire_graphics._common import OKABE_ITO
 
 
 def test_theme_numeraire_returns_theme():

@@ -22,7 +22,7 @@ from numeraire.core.evaluators import SharpeEvaluator, StrategyReturnEvaluator
 from plotnine import ggplot
 from plotnine.scales.scale_xy import scale_x_datetime
 
-from numeraire_viz import (
+from numeraire_graphics import (
     plot_cumulative,
     plot_metric_by,
     plot_rolling,
@@ -30,7 +30,7 @@ from numeraire_viz import (
     save_paper,
     theme_numeraire,
 )
-from numeraire_viz._common import date_breaks_and_labels, thinned_break_labels
+from numeraire_graphics._common import date_breaks_and_labels, thinned_break_labels
 
 # --- fixtures -------------------------------------------------------------------------------------
 
@@ -266,7 +266,7 @@ def test_theme_x_axis_rotation_hook():
 def test_theme_grid_defaults_off_and_opts_in() -> None:
     from plotnine.themes.elements import element_blank, element_line
 
-    from numeraire_viz import theme_numeraire
+    from numeraire_graphics import theme_numeraire
 
     off = theme_numeraire().themeables
     assert isinstance(off["panel_grid_major_y"].theme_element, element_blank)

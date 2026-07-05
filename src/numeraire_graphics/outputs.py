@@ -1,12 +1,12 @@
 """The Output/frame-consuming figures (input family B).
 
-The result-schema plotters in :mod:`numeraire_viz.plots` (family A) read the tidy result table
+The result-schema plotters in :mod:`numeraire_graphics.plots` (family A) read the tidy result table
 every evaluator emits. These figures need richer inputs the tidy schema deliberately does not
 carry — a per-date x asset weight stream, a factor-loadings panel, a risk-return frontier trace —
 so they take a numeraire **Output object** or a caller-supplied **frame** directly. The contract is
 otherwise identical to family A: each builder returns a plotnine ``ggplot`` and never draws or
 saves; the caller composes ``+ theme_numeraire() + scale_fill_numeraire(...)`` and hands the result
-to :func:`numeraire_viz.save_paper`.
+to :func:`numeraire_graphics.save_paper`.
 
 - :func:`plot_weights_heatmap` — a ``WeightsOutput`` / ``PanelWeightsOutput`` object → a
   date x asset weight matrix as tiles over an ordinal (gap-free) date axis, with the zero-centred
@@ -36,8 +36,12 @@ from plotnine import (
     scale_x_discrete,
 )
 
-from numeraire_viz._common import date_breaks_and_labels, smart_date_scale, thinned_break_labels
-from numeraire_viz.theme import scale_fill_numeraire
+from numeraire_graphics._common import (
+    date_breaks_and_labels,
+    smart_date_scale,
+    thinned_break_labels,
+)
+from numeraire_graphics.theme import scale_fill_numeraire
 
 
 def _weights_long(weights_output: WeightsOutput | PanelWeightsOutput) -> pd.DataFrame:
