@@ -1,0 +1,282 @@
+"""The result-schema-driven figures.
+
+Four builders, one contract: each takes a tidy result DataFrame as the first positional argument,
+keyword-only options after, and **returns a plotnine grammar object** (never draws or saves). The
+caller composes freely (``plot + theme_numeraire() + scale_color_numeraire()``) and, when ready,
+hands the object to :func:`numeraire_viz.save_paper`.
+
+Schema mapping in one line each:
+
+- :func:`plot_cumulative` — ``metric == "strategy_return"`` per-date rows → wealth + drawdown.
+- :func:`plot_rolling` — the same per-date returns → a rolling statistic (default Sharpe).
+- :func:`plot_metric_by` — a scalar summary metric → bars (with CI whiskers when derivable).
+- :func:`plot_complexity_curve` — a scalar metric against a caller-supplied numeric axis → a curve.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from plotnine import (
+    aes,
+    facet_wrap,
+    geom_col,
+    geom_errorbar,
+    geom_hline,
+    geom_line,
+    geom_point,
+    geom_rect,
+    geom_ribbon,
+    ggplot,
+    labs,
+    scale_y_continuous,
+)
+
+from numeraire_viz._common import series_rows, summary_rows
+
+
+def _percent_labels() -> Any:
+    """A percent-axis label callable, tolerant of the mizani label-API rename."""
+    try:
+        from mizani.labels import label_percent
+
+        return label_percent()
+    except ImportError:  # older mizani
+        from mizani.formatters import percent_format
+
+        return percent_format()
+
+
+def _wealth_and_drawdown(returns: pd.Series) -> pd.DataFrame:
+    """Cumulative (geometric) return and drawdown for one date-ordered return series."""
+    r = returns.to_numpy(dtype=np.float64)
+    wealth = np.cumprod(1.0 + np.nan_to_num(r, nan=0.0))
+    running_max = np.maximum.accumulate(wealth)
+    return pd.DataFrame(
+        {
+            "date": returns.index,
+            "Cumulative return": wealth - 1.0,
+            "Drawdown": wealth / running_max - 1.0,
+        }
+    )
+
+
+def _recession_frame(recessions: Any) -> pd.DataFrame:
+    """Normalize a recessions argument to a frame with datetime ``start``/``end`` columns."""
+    if isinstance(recessions, pd.DataFrame):
+        if not {"start", "end"} <= set(recessions.columns):
+            raise ValueError("recessions frame must have 'start' and 'end' columns")
+        pairs = recessions[["start", "end"]].to_numpy().tolist()
+    else:
+        pairs = [list(p) for p in recessions]
+    starts = pd.to_datetime([p[0] for p in pairs])
+    ends = pd.to_datetime([p[1] for p in pairs])
+    return pd.DataFrame({"start": starts, "end": ends})
+
+
+def plot_cumulative(
+    results: pd.DataFrame,
+    *,
+    benchmark: str | pd.Series | None = None,
+    recessions: Any = None,
+) -> ggplot:
+    """Cumulative-return and drawdown curves from per-date strategy-return rows.
+
+    Consumes the ``metric == "strategy_return"`` rows (one per date per method, as emitted by
+    ``StrategyReturnEvaluator``): each method's returns are geometrically compounded into a wealth
+    curve and its drawdown, shown in stacked facets (``geom_line`` coloured by method, a zero
+    reference line).
+
+    ``benchmark`` overlays a reference as a distinct dashed line: pass a *method name* already in
+    ``results`` (it is drawn as the benchmark rather than a peer) or a date-indexed ``pd.Series`` of
+    returns supplied by the caller. ``recessions`` shades caller-supplied ``(start, end)`` date
+    spans via ``geom_rect`` — the caller provides the dates; nothing is fetched.
+    """
+    series = series_rows(results, "strategy_return")
+
+    panels: list[pd.DataFrame] = []
+    bench_name: str | None = None
+    if isinstance(benchmark, str):
+        bench_name = benchmark
+    for method, grp in series.groupby("method", sort=False):
+        ret = pd.Series(grp["value"].to_numpy(dtype=np.float64), index=grp["date"])
+        wd = _wealth_and_drawdown(ret)
+        wd["method"] = str(method)
+        wd["role"] = "benchmark" if str(method) == bench_name else "strategy"
+        panels.append(wd)
+    if isinstance(benchmark, pd.Series):
+        ret = pd.Series(benchmark.to_numpy(dtype=np.float64), index=pd.to_datetime(benchmark.index))
+        wd = _wealth_and_drawdown(ret.sort_index())
+        wd["method"] = str(benchmark.name) if benchmark.name is not None else "benchmark"
+        wd["role"] = "benchmark"
+        panels.append(wd)
+
+    wide = pd.concat(panels, ignore_index=True)
+    long = wide.melt(
+        id_vars=["date", "method", "role"],
+        value_vars=["Cumulative return", "Drawdown"],
+        var_name="panel",
+        value_name="value",
+    )
+
+    plot = ggplot(long, aes(x="date", y="value"))
+    if recessions is not None:
+        rec = _recession_frame(recessions)
+        plot = plot + geom_rect(
+            mapping=aes(xmin="start", xmax="end"),
+            data=rec,
+            ymin=-np.inf,
+            ymax=np.inf,
+            fill="#999999",
+            alpha=0.20,
+            inherit_aes=False,
+        )
+    plot = (
+        plot
+        + geom_hline(yintercept=0, color="#666666", size=0.3)
+        + geom_line(aes(color="method", linetype="role"))
+        + facet_wrap("~panel", ncol=1, scales="free_y")
+        + scale_y_continuous(labels=_percent_labels())
+        + labs(x="", y="", color="Method", linetype="Role")
+    )
+    return plot
+
+
+def plot_rolling(
+    results: pd.DataFrame,
+    *,
+    window: int,
+    metric: str = "sharpe",
+) -> ggplot:
+    """A rolling statistic of the per-date strategy returns (default rolling Sharpe).
+
+    Reads the ``metric == "strategy_return"`` rows and, per method, computes a trailing ``window``
+    statistic: ``"sharpe"`` (mean / sample std over the window), ``"mean"`` (mean return), or
+    ``"vol"`` (sample std). Returns a ``geom_line`` coloured by method with a zero reference; the
+    y-axis is a percent scale for the return-unit statistics, plain for the (unitless) Sharpe.
+    """
+    if window < 2:
+        raise ValueError(f"window must be >= 2; got {window}")
+    allowed = ("sharpe", "mean", "vol")
+    if metric not in allowed:
+        raise ValueError(f"metric must be one of {allowed}; got {metric!r}")
+    series = series_rows(results, "strategy_return")
+
+    frames: list[pd.DataFrame] = []
+    for method, grp in series.groupby("method", sort=False):
+        ret = pd.Series(grp["value"].to_numpy(dtype=np.float64), index=grp["date"])
+        roll = ret.rolling(window)
+        if metric == "sharpe":
+            stat = roll.mean() / roll.std(ddof=1)
+        elif metric == "mean":
+            stat = roll.mean()
+        else:
+            stat = roll.std(ddof=1)
+        out = pd.DataFrame({"date": ret.index, "value": stat.to_numpy()})
+        out["method"] = str(method)
+        frames.append(out.dropna(subset=["value"]))
+    data = pd.concat(frames, ignore_index=True)
+
+    ylab = {"sharpe": f"Rolling Sharpe ({window})", "mean": "Rolling mean", "vol": "Rolling vol"}[
+        metric
+    ]
+    plot = (
+        ggplot(data, aes(x="date", y="value", color="method"))
+        + geom_hline(yintercept=0, color="#666666", size=0.3)
+        + geom_line()
+        + labs(x="", y=ylab, color="Method")
+    )
+    if metric != "sharpe":
+        plot = plot + scale_y_continuous(labels=_percent_labels())
+    return plot
+
+
+def _derive_ci(sub: pd.DataFrame, x: str) -> pd.DataFrame:
+    """Collapse summary rows to one ``value`` per ``x`` group, adding ``lo``/``hi`` when derivable.
+
+    A confidence band is taken from (in order): explicit ``ci_low``/``ci_high`` columns; a standard-
+    error column ``se`` (±1.96 se); or, failing those, the dispersion of repeated rows per group
+    (±1.96 standard error of the mean when a group has two or more rows). Otherwise no band.
+    """
+    has_ci = {"ci_low", "ci_high"} <= set(sub.columns)
+    has_se = "se" in sub.columns
+    records: list[dict[str, Any]] = []
+    for key, grp in sub.groupby(x, sort=False):
+        value = float(grp["value"].mean())
+        lo = hi = np.nan
+        if has_ci:
+            lo, hi = float(grp["ci_low"].mean()), float(grp["ci_high"].mean())
+        elif has_se:
+            se = float(grp["se"].mean())
+            lo, hi = value - 1.96 * se, value + 1.96 * se
+        elif len(grp) >= 2:
+            sem = float(grp["value"].std(ddof=1) / np.sqrt(len(grp)))
+            lo, hi = value - 1.96 * sem, value + 1.96 * sem
+        records.append({x: key, "value": value, "lo": lo, "hi": hi})
+    return pd.DataFrame.from_records(records)
+
+
+def plot_metric_by(
+    results: pd.DataFrame,
+    *,
+    metric: str,
+    x: str = "method",
+) -> ggplot:
+    """A bar chart of a summary ``metric`` across a grouping column ``x`` (method, universe, ...).
+
+    Filters ``results`` to the scalar ``metric`` (one row per group, e.g. ``"sharpe"``) and draws
+    ``geom_col``. When a confidence interval is derivable — explicit ``ci_low``/``ci_high``, a
+    standard-error column ``se``, or repeated rows per group — it is added as ``geom_errorbar``
+    whiskers; otherwise the bars stand plain. A zero reference line anchors signed metrics.
+    """
+    sub = summary_rows(results, metric)
+    if x not in sub.columns:
+        raise ValueError(f"grouping column {x!r} is not in the result table")
+    data = _derive_ci(sub, x)
+    has_ci = bool(data["hi"].notna().any())
+
+    plot = (
+        ggplot(data, aes(x=x, y="value", fill=x))
+        + geom_hline(yintercept=0, color="#666666", size=0.3)
+        + geom_col()
+    )
+    if has_ci:
+        plot = plot + geom_errorbar(aes(ymin="lo", ymax="hi"), width=0.25)
+    return plot + labs(x=x, y=metric, fill=x)
+
+
+def plot_complexity_curve(
+    results: pd.DataFrame,
+    *,
+    x: str,
+    metric: str,
+    ribbon: tuple[str, str] | None = None,
+) -> ggplot:
+    """A summary ``metric`` plotted against a numeric complexity axis ``x``.
+
+    ``x`` names a numeric column the caller has joined onto ``results`` (a shrinkage intensity, a
+    parameter count, a regularization level — the result schema does not carry one, so it is an
+    explicit argument). Rows are sorted along ``x`` and drawn as a ``geom_line`` + ``geom_point``
+    coloured by method. ``ribbon`` optionally names ``(low, high)`` columns for a ``geom_ribbon``
+    band around the curve. A zero reference line is included.
+    """
+    sub = summary_rows(results, metric)
+    if x not in sub.columns:
+        raise ValueError(
+            f"complexity axis {x!r} is not in the result table; join it on before plotting"
+        )
+    data = sub.sort_values(x, kind="stable")
+
+    plot = ggplot(data, aes(x=x, y="value", color="method")) + geom_hline(
+        yintercept=0, color="#666666", size=0.3
+    )
+    if ribbon is not None:
+        low, high = ribbon
+        for col in (low, high):
+            if col not in data.columns:
+                raise ValueError(f"ribbon column {col!r} is not in the result table")
+        plot = plot + geom_ribbon(aes(ymin=low, ymax=high, fill="method"), alpha=0.20, color=None)
+    plot = plot + geom_line() + geom_point() + labs(x=x, y=metric, color="Method")
+    return plot
