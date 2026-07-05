@@ -1,0 +1,43 @@
+# Publish to PyPI via Trusted Publishing (OIDC, no stored secrets/tokens).
+#
+# Trigger = a deliberate GitHub Release, never an ordinary push. Publishing is
+# decoupled from mainline development:
+#
+#   push to main          -> CI only (ci.yml); NOT published
+#   push a tag (e.g. v*)  -> nothing; a bare tag does not publish
+#   create a Release      -> THIS workflow publishes that tag's version
+#
+# The release's tag drives the version (hatch-vcs), so the published version is
+# exactly the tag with no manual version bookkeeping. A Release marked
+# "pre-release" on an rc/beta/alpha tag (e.g. v0.3.0rc1) publishes a PyPI
+# pre-release, which pip installs only with --pre.
+#
+# Release procedure:
+#   1. Move CHANGELOG.md [Unreleased] entries under a new [X.Y.Z] heading.
+#   2. gh release create vX.Y.Z --generate-notes   (or --notes from CHANGELOG)
+#   3. This workflow builds + publishes; verify `pip install numeraire==X.Y.Z`.
+#
+# workflow_dispatch is kept only as a manual fallback (e.g. re-run a failed
+# publish); dispatch it against the release tag ref so the version resolves.
+name: Publish
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # required for PyPI Trusted Publishing (OIDC); no secrets
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # full history so hatch-vcs derives the version from the tag
+      - uses: astral-sh/setup-uv@v6
+        with: { python-version: "3.12" }
+      - name: Build
+        run: uv build
+      - name: Check distributions
+        run: uvx twine check dist/*   # ephemeral twine; the publish job needs no dev toolchain
+      - uses: pypa/gh-action-pypi-publish@release/v1
