@@ -1,7 +1,13 @@
 # numeraire-graphics
 
+[![PyPI](https://img.shields.io/pypi/v/numeraire-graphics.svg)](https://pypi.org/project/numeraire-graphics/)
+[![Python versions](https://img.shields.io/pypi/pyversions/numeraire-graphics.svg)](https://pypi.org/project/numeraire-graphics/)
+[![CI](https://github.com/py-numeraire/numeraire-graphics/actions/workflows/ci.yml/badge.svg)](https://github.com/py-numeraire/numeraire-graphics/actions/workflows/ci.yml)
+[![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+
 Grammar-of-graphics figures over [**numeraire**](https://github.com/py-numeraire/numeraire)'s
-results and Output objects.
+results and Output objects. Part of the
+[numeraire ecosystem](https://py-numeraire.org/ecosystem.html).
 
 **plotnine is primary.** Every plot function *returns* a `ggplot` grammar object — it never draws,
 shows, or saves. You compose the returned object freely (`+ theme_numeraire()` and friends) and,
@@ -107,5 +113,10 @@ figure.
   numeraire has no standard loadings/frontier surface today; if a core loadings accessor lands
   (e.g. a Γ panel accessor), the loadings plot can consume the object directly like the weights
   heatmap does.
+
+## Citation
+
+`numeraire-graphics` is a companion to `numeraire`. If you use the ecosystem in your research, please
+cite `numeraire` — see [How to cite](https://github.com/py-numeraire/numeraire#how-to-cite).
 
 License: BSD-3-Clause.
