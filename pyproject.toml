@@ -41,13 +41,20 @@ dev = [
   # Match the installed pandas (2.2.x) so basedpyright uses the maintained stubs.
   "pandas-stubs>=2.2,<2.3",
 ]
+docs = [
+  "sphinx>=7.3",
+  "pydata-sphinx-theme>=0.15",
+  "myst-parser>=3.0",
+  "sphinx-design>=0.6",
+]
 
 [project.urls]
 Homepage = "https://github.com/py-numeraire/numeraire-graphics"
+Documentation = "https://graphics.py-numeraire.org/"
 Repository = "https://github.com/py-numeraire/numeraire-graphics"
 Issues = "https://github.com/py-numeraire/numeraire-graphics/issues"
 
-# Local development resolves numeraire from the sibling checkout until it is on PyPI.
+# Local development resolves numeraire from the sibling checkout (overriding the PyPI dependency).
 [tool.uv.sources]
 numeraire = { path = "../numeraire", editable = true }
 
