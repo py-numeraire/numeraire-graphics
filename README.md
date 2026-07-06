@@ -7,7 +7,7 @@
 
 Grammar-of-graphics figures over [**numeraire**](https://github.com/py-numeraire/numeraire)'s
 results and Output objects. Part of the
-[numeraire ecosystem](https://py-numeraire.org/ecosystem.html).
+[numeraire ecosystem](https://numeraire.py-numeraire.org/ecosystem.html).
 
 **plotnine is primary.** Every plot function *returns* a `ggplot` grammar object — it never draws,
 shows, or saves. You compose the returned object freely (`+ theme_numeraire()` and friends) and,
