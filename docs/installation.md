@@ -4,7 +4,7 @@
 pip install numeraire-graphics
 ```
 
-This pulls in [`numeraire`](https://py-numeraire.org/) (the framework whose results it plots) and
+This pulls in [`numeraire`](https://numeraire.py-numeraire.org/) (the framework whose results it plots) and
 [plotnine](https://plotnine.org/) with its rendering stack. Python 3.11+ is required.
 
 `numeraire-graphics` is a companion package; the framework installs it for you through the

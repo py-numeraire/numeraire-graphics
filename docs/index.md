@@ -4,7 +4,7 @@ title: numeraire-graphics
 
 # numeraire-graphics
 
-Publication-ready, grammar-of-graphics figures for the [numeraire](https://py-numeraire.org/)
+Publication-ready, grammar-of-graphics figures for the [numeraire](https://numeraire.py-numeraire.org/)
 research framework. Every plot is a pure function `(results, *, ...) -> ggplot` built with
 [plotnine](https://plotnine.org/): it consumes the tidy result schema every evaluator emits, or an
 engine Output object such as a {class}`~numeraire.WeightsOutput`, and returns a grammar object. It

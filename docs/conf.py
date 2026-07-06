@@ -62,7 +62,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
-    "numeraire": ("https://py-numeraire.org/", None),
+    "numeraire": ("https://numeraire.py-numeraire.org/", None),
     "plotnine": ("https://plotnine.org/", None),
 }
 
@@ -75,7 +75,7 @@ html_static_path = ["_static"]
 html_theme_options = {
     "github_url": "https://github.com/py-numeraire/numeraire-graphics",
     "external_links": [
-        {"name": "numeraire", "url": "https://py-numeraire.org/"},
+        {"name": "numeraire", "url": "https://numeraire.py-numeraire.org/"},
         {"name": "dataset", "url": "https://dataset.py-numeraire.org/"},
     ],
     "icon_links": [
@@ -85,7 +85,7 @@ html_theme_options = {
             "icon": "fa-brands fa-python",
         },
     ],
-    "announcement": 'Part of the <a href="https://py-numeraire.org/">numeraire</a> ecosystem.',
+    "announcement": 'Part of the <a href="https://numeraire.py-numeraire.org/">numeraire</a> ecosystem.',
     "navigation_with_keys": False,
     "show_prev_next": True,
     "show_toc_level": 2,
