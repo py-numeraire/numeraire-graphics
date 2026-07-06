@@ -85,7 +85,9 @@ html_theme_options = {
             "icon": "fa-brands fa-python",
         },
     ],
-    "announcement": 'Part of the <a href="https://numeraire.py-numeraire.org/">numeraire</a> ecosystem.',
+    "announcement": (
+        'Part of the <a href="https://numeraire.py-numeraire.org/">numeraire</a> ecosystem.'
+    ),
     "navigation_with_keys": False,
     "show_prev_next": True,
     "show_toc_level": 2,
