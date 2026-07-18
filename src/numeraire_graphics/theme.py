@@ -204,6 +204,17 @@ def save_paper(
     saved = {k: rc[k] for k in profile}
     try:
         rc.update(profile)
+        # Matplotlib 3.11 can expose its private automatic-backend sentinel while plotnine 0.15
+        # snapshots rcParams into a complete theme. Passing that opaque object back through
+        # ``matplotlib.rc_context`` raises before a figure is drawn. A real configured backend is
+        # always a string, so discard only the invalid sentinel from plotnine's private snapshot.
+        # This compatibility seam can be removed once plotnine handles Matplotlib 3.11 directly.
+        plot_theme: Any = getattr(plot, "theme", None)
+        plot_rc: Any = getattr(plot_theme, "_rcParams", None)
+        if isinstance(plot_rc, dict):
+            backend: Any = plot_rc.get("backend")
+            if backend is not None and not isinstance(backend, str):
+                plot_rc.pop("backend", None)
         plot.save(
             filename=str(out),
             format=format,

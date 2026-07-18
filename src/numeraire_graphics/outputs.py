@@ -166,7 +166,13 @@ def _loadings_frame(loadings: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def plot_factor_loadings(loadings: pd.DataFrame, *, x: str | None = None) -> ggplot:
+def plot_factor_loadings(
+    loadings: pd.DataFrame,
+    *,
+    x: str | None = None,
+    series: str | None = None,
+    diverging: bool = True,
+) -> ggplot:
     """Factor-loading paths over an axis, or a loadings heatmap when no axis is given.
 
     There is **no** standard core loadings surface — a loadings object is method-local (an IPCA
@@ -178,7 +184,12 @@ def plot_factor_loadings(loadings: pd.DataFrame, *, x: str | None = None) -> ggp
     profile) the loadings are drawn as ``geom_line`` + ``geom_point`` paths coloured *and* facetted
     by factor. With ``x=None`` the frame is shown as a loadings heatmap — ``factor`` on the y-axis,
     the first present of ``entity``/``date`` on the x-axis, ``loading`` as the (diverging) fill —
-    the natural view of a static factor x characteristic matrix.
+    the natural view of a static factor x characteristic matrix. The heatmap uses a zero-centred
+    diverging fill by default; pass ``diverging=False`` to supply a scale yourself.
+
+    For paths, ``series`` names the column whose entities form separate lines. When omitted and an
+    ``entity`` column is present (and is not itself the x-axis), it is selected automatically so
+    separate firms/characteristics are never connected into one artificial path.
     """
     data = _loadings_frame(loadings)
 
@@ -189,17 +200,32 @@ def plot_factor_loadings(loadings: pd.DataFrame, *, x: str | None = None) -> ggp
                 "a loadings heatmap needs an 'entity' or 'date' column for its x-axis; "
                 "none found — pass x= to draw loading paths instead"
             )
-        return (
+        plot = (
             ggplot(data, aes(x=axis, y="factor", fill="loading"))
             + geom_tile()
             + labs(x="", y="", fill="Loading")
         )
+        if diverging:
+            plot = plot + scale_fill_numeraire(diverging=True)
+        return plot
 
     if x not in data.columns:
         raise ValueError(f"loading axis {x!r} is not a column of the loadings frame")
+    line_series = series
+    if line_series is None and "entity" in data.columns and x != "entity":
+        line_series = "entity"
+    if line_series is not None and line_series not in data.columns:
+        raise ValueError(f"loading series {line_series!r} is not a column of the loadings frame")
     data = data.sort_values(x, kind="stable")
+    mapping = aes(x=x, y="loading", color="factor")
+    if line_series is not None:
+        data = data.copy()
+        data["_series_group"] = data.groupby(
+            ["factor", line_series], sort=False, dropna=False
+        ).ngroup()
+        mapping = aes(x=x, y="loading", color="factor", group="_series_group")
     plot = (
-        ggplot(data, aes(x=x, y="loading", color="factor"))
+        ggplot(data, mapping)
         + geom_hline(yintercept=0, color="#666666", size=0.3)
         + geom_line()
         + geom_point()
@@ -236,7 +262,12 @@ def plot_frontier(frontier: pd.DataFrame, *, points: pd.DataFrame | None = None)
     as labelled markers: a frame with ``risk``, ``return`` and — for the labels — an optional
     ``label`` column. Both frames raise if they lack ``risk``/``return``.
     """
-    front = _frontier_frame(frontier, "frontier").sort_values("risk", kind="stable")
+    front = _frontier_frame(frontier, "frontier").sort_values("return", kind="stable")
+    if not front["return"].is_monotonic_increasing or not front["risk"].is_monotonic_increasing:
+        raise ValueError(
+            "frontier must contain only the upper efficient branch with risk nondecreasing in "
+            "expected return; do not pass both sides of the global-minimum-variance portfolio"
+        )
     plot = (
         ggplot(front, aes(x="risk", y="return"))
         + geom_line()
@@ -291,6 +322,9 @@ def mean_variance_frontier(mean: np.ndarray, cov: np.ndarray, *, n: int = 50) ->
     d = b * c - a * a
     if d <= 0.0:
         raise ValueError("degenerate frontier (B*C - A^2 <= 0); check the mean/covariance inputs")
-    targets = np.linspace(float(mu.min()), float(mu.max()), n)
+    gmv_return = a / c
+    span = float(np.ptp(mu))
+    upper = max(float(mu.max()), gmv_return + span)
+    targets = np.linspace(gmv_return, upper, n)
     variance = (c * targets**2 - 2.0 * a * targets + b) / d
     return pd.DataFrame({"risk": np.sqrt(variance), "return": targets})

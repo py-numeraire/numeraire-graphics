@@ -132,6 +132,7 @@ def test_factor_loadings_heatmap_when_no_axis(loadings_matrix, tmp_path):
     assert "geom_tile" in _geoms(plot)
     assert plot.mapping["x"] == "entity"
     assert plot.mapping["fill"] == "loading"
+    assert any(isinstance(scale, scale_fill_gradient2) for scale in plot.scales)
     _smoke_render(plot, tmp_path, "loadings_heatmap")
 
 
@@ -156,6 +157,34 @@ def test_factor_loadings_heatmap_needs_identifier():
         plot_factor_loadings(frame)
 
 
+def test_factor_loadings_auto_groups_entities() -> None:
+    dates = pd.date_range("2000-01-31", periods=3, freq="ME")
+    frame = pd.DataFrame(
+        {
+            "date": list(dates) * 4,
+            "entity": ["a"] * 3 + ["b"] * 3 + ["a"] * 3 + ["b"] * 3,
+            "factor": ["f1"] * 6 + ["f2"] * 6,
+            "loading": [
+                0.1,
+                0.2,
+                0.3,
+                -0.1,
+                -0.2,
+                -0.3,
+                0.4,
+                0.5,
+                0.6,
+                -0.4,
+                -0.5,
+                -0.6,
+            ],
+        }
+    )
+    plot = plot_factor_loadings(frame, x="date")
+    assert plot.mapping["group"] == "_series_group"
+    assert plot.data["_series_group"].nunique() == 4
+
+
 # --- plot_frontier + mean_variance_frontier ---------------------------------------------------
 
 
@@ -170,8 +199,9 @@ def test_mean_variance_frontier_shape_and_monotone(frontier_frame):
     assert list(frontier_frame.columns) == ["risk", "return"]
     assert len(frontier_frame) == 25
     assert (frontier_frame["risk"] > 0).all()
-    # returns span the asset means, ascending
+    # the helper emits only the upper efficient branch: return and risk both increase.
     assert list(frontier_frame["return"]) == sorted(frontier_frame["return"])
+    assert list(frontier_frame["risk"]) == sorted(frontier_frame["risk"])
 
 
 def test_mean_variance_frontier_rejects_shape_mismatch():
@@ -192,6 +222,12 @@ def test_frontier_curve(frontier_frame, tmp_path):
     # sorted along risk for a clean curve
     assert list(plot.data["risk"]) == sorted(plot.data["risk"])
     _smoke_render(plot, tmp_path, "frontier")
+
+
+def test_frontier_rejects_both_gmv_branches() -> None:
+    both = pd.DataFrame({"risk": [0.3, 0.2, 0.3], "return": [0.02, 0.05, 0.08]})
+    with pytest.raises(ValueError, match="upper efficient branch"):
+        plot_frontier(both)
 
 
 def test_frontier_with_labelled_points(frontier_frame, tmp_path):
