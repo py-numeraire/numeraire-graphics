@@ -10,8 +10,10 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no display needed
 
+import numpy as np
 import pandas as pd
 import pytest
+from numeraire.core.schema import RESULT_COLUMNS
 from plotnine import ggplot
 
 from numeraire_graphics import (
@@ -21,6 +23,32 @@ from numeraire_graphics import (
     plot_metric_by,
     plot_rolling,
 )
+
+
+def _empty_results() -> pd.DataFrame:
+    """A schema-conformant result table with no rows."""
+    return pd.DataFrame({column: [] for column in RESULT_COLUMNS})
+
+
+def _all_nan_method_results() -> pd.DataFrame:
+    """A non-empty ``strategy_return`` table whose ``method`` is all-NaN.
+
+    ``groupby('method')`` drops the NaN key, leaving an empty calendar list — the path that used
+    to reach ``calendars[0]`` and raise a bare ``IndexError`` in the benchmark branch.
+    """
+    row = {column: np.nan for column in RESULT_COLUMNS}
+    row.update(
+        run_id="r",
+        metric="strategy_return",
+        date=pd.Timestamp("2000-01-31"),
+        value=0.01,
+        universe="n=4",
+        capability="to_weights",
+        protocol="walk_forward",
+        config_hash="cfg0",
+        data_vintage="synthetic",
+    )
+    return pd.DataFrame([row], columns=[*RESULT_COLUMNS])
 
 
 def _geoms(plot: ggplot) -> list[str]:
@@ -72,6 +100,21 @@ def test_cumulative_named_benchmark_marks_role(strategy_return_results):
     assert _layer_mapping(plot, "geom_line")["linetype"] == "role"
 
 
+def test_cumulative_empty_with_benchmark_raises_valueerror():
+    # Empty results + a benchmark must raise a clear ValueError, never a bare IndexError.
+    bench = pd.Series([0.01], index=pd.to_datetime(["2000-01-31"]), name="equal_weight")
+    with pytest.raises(ValueError):
+        plot_cumulative(_empty_results(), benchmark=bench)
+
+
+def test_cumulative_all_nan_method_with_benchmark_raises_valueerror():
+    # groupby drops the all-NaN method key → empty calendars; the benchmark branch must not reach
+    # ``calendars[0]`` and raise IndexError.
+    bench = pd.Series([0.01], index=pd.to_datetime(["2000-01-31"]), name="equal_weight")
+    with pytest.raises(ValueError, match="no strategy-return series"):
+        plot_cumulative(_all_nan_method_results(), benchmark=bench)
+
+
 # --- plot_rolling ----------------------------------------------------------------------------
 
 
@@ -93,6 +136,17 @@ def test_rolling_rejects_short_window(strategy_return_results):
 def test_rolling_rejects_unknown_metric(strategy_return_results):
     with pytest.raises(ValueError, match="metric"):
         plot_rolling(strategy_return_results, window=12, metric="omega")
+
+
+def test_rolling_empty_raises_valueerror():
+    with pytest.raises(ValueError):
+        plot_rolling(_empty_results(), window=12)
+
+
+def test_rolling_all_nan_method_raises_valueerror():
+    # Empty calendars must raise a clear ValueError, not a cryptic "No objects to concatenate".
+    with pytest.raises(ValueError, match="no strategy-return series"):
+        plot_rolling(_all_nan_method_results(), window=12)
 
 
 # --- plot_metric_by --------------------------------------------------------------------------

@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `plot_cumulative` and `plot_rolling` now raise a clear `ValueError` when the result table yields
+  no plottable per-date series (including when `groupby` drops an all-NaN `method` key), instead of
+  surfacing a bare `IndexError` from the benchmark branch or a cryptic concat error.
 - Made `save_paper` compatible with the Matplotlib 3.11 automatic-backend sentinel exposed through
   plotnine 0.15 theme snapshots.
 

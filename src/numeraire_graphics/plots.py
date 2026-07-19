@@ -111,6 +111,10 @@ def plot_cumulative(
     """
     series = series_rows(results, "strategy_return")
     calendars = [tuple(group["date"]) for _, group in series.groupby("method", sort=False)]
+    if not calendars:
+        raise ValueError(
+            "no strategy-return series to plot; the result table has no usable per-date rows"
+        )
     if any(calendar != calendars[0] for calendar in calendars[1:]):
         raise ValueError(
             "cumulative comparisons require exactly aligned method calendars; align the result "
@@ -201,6 +205,10 @@ def plot_rolling(
         raise ValueError(f"metric must be one of {allowed}; got {metric!r}")
     series = series_rows(results, "strategy_return")
     calendars = [tuple(group["date"]) for _, group in series.groupby("method", sort=False)]
+    if not calendars:
+        raise ValueError(
+            "no strategy-return series to plot; the result table has no usable per-date rows"
+        )
     if any(calendar != calendars[0] for calendar in calendars[1:]):
         raise ValueError(
             "rolling comparisons require exactly aligned method calendars; align the result "
