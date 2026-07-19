@@ -70,3 +70,11 @@ def test_save_paper_restores_rcparams(tmp_path):
     before = mpl.rcParams["font.family"]
     save_paper(_tiny_plot(), tmp_path / "f.pdf", width_cm=8, height_cm=6, font_profile="latex")
     assert mpl.rcParams["font.family"] == before
+
+
+def test_save_paper_discards_matplotlib_auto_backend_sentinel(tmp_path):
+    plot = _tiny_plot()
+    plot.theme._rcParams["backend"] = object()
+    out = save_paper(plot, tmp_path / "sentinel.png", width_cm=8, height_cm=6)
+    assert out.exists()
+    assert "backend" not in plot.theme._rcParams

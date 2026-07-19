@@ -63,7 +63,11 @@ def _percent_labels() -> Any:
 def _wealth_and_drawdown(returns: pd.Series) -> pd.DataFrame:
     """Cumulative (geometric) return and drawdown for one date-ordered return series."""
     r = returns.to_numpy(dtype=np.float64)
-    wealth = np.cumprod(1.0 + np.nan_to_num(r, nan=0.0))
+    if not np.isfinite(r).all():
+        raise ValueError("strategy returns must be finite; missing returns are not zero returns")
+    if (r <= -1.0).any():
+        raise ValueError("simple strategy returns must be greater than -1 for geometric wealth")
+    wealth = np.cumprod(1.0 + r)
     running_max = np.maximum.accumulate(wealth)
     return pd.DataFrame(
         {
@@ -106,6 +110,16 @@ def plot_cumulative(
     spans via ``geom_rect`` — the caller provides the dates; nothing is fetched.
     """
     series = series_rows(results, "strategy_return")
+    calendars = [tuple(group["date"]) for _, group in series.groupby("method", sort=False)]
+    if not calendars:
+        raise ValueError(
+            "no strategy-return series to plot; the result table has no usable per-date rows"
+        )
+    if any(calendar != calendars[0] for calendar in calendars[1:]):
+        raise ValueError(
+            "cumulative comparisons require exactly aligned method calendars; align the result "
+            "table explicitly before plotting"
+        )
 
     panels: list[pd.DataFrame] = []
     bench_name: str | None = None
@@ -125,7 +139,15 @@ def plot_cumulative(
         panels.append(wd)
     if isinstance(benchmark, pd.Series):
         ret = pd.Series(benchmark.to_numpy(dtype=np.float64), index=pd.to_datetime(benchmark.index))
-        wd = _wealth_and_drawdown(ret.sort_index())
+        if not ret.index.is_unique:
+            raise ValueError("benchmark index must be unique")
+        ret = ret.sort_index()
+        if tuple(ret.index) != calendars[0]:
+            raise ValueError(
+                "benchmark dates must exactly match the strategy calendar; align it explicitly "
+                "before plotting"
+            )
+        wd = _wealth_and_drawdown(ret)
         wd["method"] = str(benchmark.name) if benchmark.name is not None else "benchmark"
         wd["role"] = "benchmark"
         panels.append(wd)
@@ -182,6 +204,16 @@ def plot_rolling(
     if metric not in allowed:
         raise ValueError(f"metric must be one of {allowed}; got {metric!r}")
     series = series_rows(results, "strategy_return")
+    calendars = [tuple(group["date"]) for _, group in series.groupby("method", sort=False)]
+    if not calendars:
+        raise ValueError(
+            "no strategy-return series to plot; the result table has no usable per-date rows"
+        )
+    if any(calendar != calendars[0] for calendar in calendars[1:]):
+        raise ValueError(
+            "rolling comparisons require exactly aligned method calendars; align the result "
+            "table explicitly before plotting"
+        )
 
     frames: list[pd.DataFrame] = []
     for method, grp in series.groupby("method", sort=False):
@@ -218,23 +250,27 @@ def _derive_ci(sub: pd.DataFrame, x: str) -> pd.DataFrame:
     """Collapse summary rows to one ``value`` per ``x`` group, adding ``lo``/``hi`` when derivable.
 
     A confidence band is taken from (in order): explicit ``ci_low``/``ci_high`` columns; a standard-
-    error column ``se`` (±1.96 se); or, failing those, the dispersion of repeated rows per group
-    (±1.96 standard error of the mean when a group has two or more rows). Otherwise no band.
+    error column ``se`` (±1.96 se). Repeated rows are not treated as IID replications: they often
+    differ by universe, vintage, configuration, or sample and must be aggregated upstream with a
+    declared estimand and uncertainty procedure.
     """
     has_ci = {"ci_low", "ci_high"} <= set(sub.columns)
     has_se = "se" in sub.columns
     records: list[dict[str, Any]] = []
     for key, grp in sub.groupby(x, sort=False):
-        value = float(grp["value"].mean())
+        if len(grp) != 1:
+            raise ValueError(
+                f"metric={grp['metric'].iloc[0]!r} has {len(grp)} rows for {x}={key!r}; "
+                "filter or aggregate them explicitly instead of treating heterogeneous rows as "
+                "IID replications"
+            )
+        value = float(grp["value"].iloc[0])
         lo = hi = np.nan
         if has_ci:
-            lo, hi = float(grp["ci_low"].mean()), float(grp["ci_high"].mean())
+            lo, hi = float(grp["ci_low"].iloc[0]), float(grp["ci_high"].iloc[0])
         elif has_se:
-            se = float(grp["se"].mean())
+            se = float(grp["se"].iloc[0])
             lo, hi = value - 1.96 * se, value + 1.96 * se
-        elif len(grp) >= 2:
-            sem = float(grp["value"].std(ddof=1) / np.sqrt(len(grp)))
-            lo, hi = value - 1.96 * sem, value + 1.96 * sem
         records.append({x: key, "value": value, "lo": lo, "hi": hi})
     return pd.DataFrame.from_records(records)
 
@@ -248,9 +284,10 @@ def plot_metric_by(
     """A bar chart of a summary ``metric`` across a grouping column ``x`` (method, universe, ...).
 
     Filters ``results`` to the scalar ``metric`` (one row per group, e.g. ``"sharpe"``) and draws
-    ``geom_col``. When a confidence interval is derivable — explicit ``ci_low``/``ci_high``, a
-    standard-error column ``se``, or repeated rows per group — it is added as ``geom_errorbar``
-    whiskers; otherwise the bars stand plain. A zero reference line anchors signed metrics.
+    ``geom_col``. When a confidence interval is declared through explicit ``ci_low``/``ci_high``
+    or a standard-error column ``se``, it is added as ``geom_errorbar`` whiskers; otherwise the
+    bars stand plain. Repeated rows for one ``x`` value raise because universes, vintages, and runs
+    are not IID replicates. A zero reference line anchors signed metrics.
     """
     sub = summary_rows(results, metric)
     if x not in sub.columns:

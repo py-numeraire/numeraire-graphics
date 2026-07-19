@@ -13,6 +13,7 @@ import math
 import warnings
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from numeraire.core.schema import validate_result
 from plotnine import scale_x_datetime
@@ -57,6 +58,35 @@ def series_rows(results: pd.DataFrame, metric: str) -> pd.DataFrame:
             "(e.g. StrategyReturnEvaluator emits metric='strategy_return')"
         )
     sub["date"] = pd.to_datetime(sub["date"])
+    values = pd.to_numeric(sub["value"], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(values).all():
+        raise ValueError(
+            f"metric={metric!r} contains non-finite values; refuse to plot gaps as data"
+        )
+    duplicate = sub.duplicated(["method", "date"], keep=False)
+    if duplicate.any():
+        methods = sorted(str(item) for item in sub.loc[duplicate, "method"].unique())
+        raise ValueError(
+            "per-date plots require one observation per (method, date); duplicate rows for "
+            f"{methods} may indicate overlapping folds or mixed runs"
+        )
+    identity = [
+        "run_id",
+        "universe",
+        "capability",
+        "protocol",
+        "config_hash",
+        "data_vintage",
+    ]
+    mixed = []
+    for method, group in sub.groupby("method", sort=False):
+        if any(group[column].nunique(dropna=False) != 1 for column in identity):
+            mixed.append(str(method))
+    if mixed:
+        raise ValueError(
+            "per-date plots cannot silently combine multiple runs/configurations under one "
+            f"method label: {mixed}; filter the result table or give each curve a unique method"
+        )
     return sub.sort_values(["method", "date"], kind="stable").reset_index(drop=True)
 
 

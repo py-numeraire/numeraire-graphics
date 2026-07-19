@@ -184,7 +184,8 @@ def test_heatmap_empty_raises():
 
 
 def test_metric_by_drops_redundant_fill_legend(summary_results):
-    plot = plot_metric_by(summary_results, metric="sharpe")
+    one_row_per_method = summary_results.drop_duplicates("method")
+    plot = plot_metric_by(one_row_per_method, metric="sharpe")
     col = next(layer for layer in plot.layers if type(layer.geom).__name__ == "geom_col")
     assert col.show_legend is False
     # the fill aesthetic is still mapped (coloured bars), just not legended
@@ -212,7 +213,7 @@ def test_palette_overflow_warns(many_method_results):
 def test_no_warning_within_palette(summary_results):
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # any palette-overflow warning would fail here
-        plot_metric_by(summary_results, metric="sharpe")
+        plot_metric_by(summary_results.drop_duplicates("method"), metric="sharpe")
 
 
 # --- 5b. save_paper defaults + explicit format ---------------------------------------------------

@@ -10,8 +10,10 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no display needed
 
+import numpy as np
 import pandas as pd
 import pytest
+from numeraire.core.schema import RESULT_COLUMNS
 from plotnine import ggplot
 
 from numeraire_graphics import (
@@ -21,6 +23,32 @@ from numeraire_graphics import (
     plot_metric_by,
     plot_rolling,
 )
+
+
+def _empty_results() -> pd.DataFrame:
+    """A schema-conformant result table with no rows."""
+    return pd.DataFrame({column: [] for column in RESULT_COLUMNS})
+
+
+def _all_nan_method_results() -> pd.DataFrame:
+    """A non-empty ``strategy_return`` table whose ``method`` is all-NaN.
+
+    ``groupby('method')`` drops the NaN key, leaving an empty calendar list — the path that used
+    to reach ``calendars[0]`` and raise a bare ``IndexError`` in the benchmark branch.
+    """
+    row = {column: np.nan for column in RESULT_COLUMNS}
+    row.update(
+        run_id="r",
+        metric="strategy_return",
+        date=pd.Timestamp("2000-01-31"),
+        value=0.01,
+        universe="n=4",
+        capability="to_weights",
+        protocol="walk_forward",
+        config_hash="cfg0",
+        data_vintage="synthetic",
+    )
+    return pd.DataFrame([row], columns=[*RESULT_COLUMNS])
 
 
 def _geoms(plot: ggplot) -> list[str]:
@@ -72,6 +100,21 @@ def test_cumulative_named_benchmark_marks_role(strategy_return_results):
     assert _layer_mapping(plot, "geom_line")["linetype"] == "role"
 
 
+def test_cumulative_empty_with_benchmark_raises_valueerror():
+    # Empty results + a benchmark must raise a clear ValueError, never a bare IndexError.
+    bench = pd.Series([0.01], index=pd.to_datetime(["2000-01-31"]), name="equal_weight")
+    with pytest.raises(ValueError):
+        plot_cumulative(_empty_results(), benchmark=bench)
+
+
+def test_cumulative_all_nan_method_with_benchmark_raises_valueerror():
+    # groupby drops the all-NaN method key → empty calendars; the benchmark branch must not reach
+    # ``calendars[0]`` and raise IndexError.
+    bench = pd.Series([0.01], index=pd.to_datetime(["2000-01-31"]), name="equal_weight")
+    with pytest.raises(ValueError, match="no strategy-return series"):
+        plot_cumulative(_all_nan_method_results(), benchmark=bench)
+
+
 # --- plot_rolling ----------------------------------------------------------------------------
 
 
@@ -95,20 +138,28 @@ def test_rolling_rejects_unknown_metric(strategy_return_results):
         plot_rolling(strategy_return_results, window=12, metric="omega")
 
 
+def test_rolling_empty_raises_valueerror():
+    with pytest.raises(ValueError):
+        plot_rolling(_empty_results(), window=12)
+
+
+def test_rolling_all_nan_method_raises_valueerror():
+    # Empty calendars must raise a clear ValueError, not a cryptic "No objects to concatenate".
+    with pytest.raises(ValueError, match="no strategy-return series"):
+        plot_rolling(_all_nan_method_results(), window=12)
+
+
 # --- plot_metric_by --------------------------------------------------------------------------
 
 
-def test_metric_by_method_has_error_bars_from_repeated_rows(summary_results, tmp_path):
-    plot = plot_metric_by(summary_results, metric="sharpe")
-    assert isinstance(plot, ggplot)
-    assert "geom_col" in _geoms(plot)
-    assert "geom_errorbar" in _geoms(plot)  # two rows per method -> derived CI
-    assert set(plot.data["method"]) == {"model_a", "model_b"}
-    _smoke_render(plot, tmp_path, "metric_by")
+def test_metric_by_rejects_heterogeneous_repeated_rows(summary_results):
+    with pytest.raises(ValueError, match="IID replications"):
+        plot_metric_by(summary_results, metric="sharpe")
 
 
-def test_metric_by_universe_grouping(summary_results):
-    plot = plot_metric_by(summary_results, metric="sharpe", x="universe")
+def test_metric_by_universe_grouping_requires_one_method(summary_results):
+    one_method = summary_results.loc[summary_results["method"] == "model_a"]
+    plot = plot_metric_by(one_method, metric="sharpe", x="universe")
     assert plot.mapping["x"] == "universe"
     assert set(plot.data["universe"]) == {"n=25", "n=30"}
 
@@ -134,7 +185,7 @@ def test_metric_by_plain_bars_without_ci():
 
 
 def test_metric_by_se_column_builds_ci(summary_results):
-    df = summary_results.copy()
+    df = summary_results.drop_duplicates("method").copy()
     df["se"] = 0.05
     plot = plot_metric_by(df, metric="sharpe")
     assert "geom_errorbar" in _geoms(plot)
@@ -143,6 +194,25 @@ def test_metric_by_se_column_builds_ci(summary_results):
 def test_metric_by_rejects_missing_group(summary_results):
     with pytest.raises(ValueError, match="grouping column"):
         plot_metric_by(summary_results, metric="sharpe", x="nonexistent")
+
+
+def test_cumulative_rejects_duplicate_method_dates(strategy_return_results):
+    duplicate = pd.concat([strategy_return_results, strategy_return_results.iloc[[0]]])
+    with pytest.raises(ValueError, match="one observation per"):
+        plot_cumulative(duplicate)
+
+
+def test_cumulative_rejects_mixed_runs_under_one_method(strategy_return_results):
+    extra = strategy_return_results.loc[
+        (strategy_return_results["method"] == "model_a")
+        & (strategy_return_results["metric"] == "strategy_return")
+    ].copy()
+    extra["run_id"] = "another-run"
+    extra["method"] = "model_a"
+    extra["date"] = extra["date"] + pd.DateOffset(years=10)
+    mixed = pd.concat([strategy_return_results, extra], ignore_index=True)
+    with pytest.raises(ValueError, match="multiple runs"):
+        plot_cumulative(mixed)
 
 
 # --- plot_complexity_curve -------------------------------------------------------------------
